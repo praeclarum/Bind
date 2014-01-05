@@ -39,6 +39,7 @@
     <Compile Include="..\src\Bind.cs">
       <Link>Bind.cs</Link>
     </Compile>
+    <Compile Include="ChangeTrackingTest.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>

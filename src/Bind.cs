@@ -52,7 +52,7 @@ namespace Praeclarum.Bind
 		}
 	}
 
-	public abstract class Binding : IDisposable
+	public abstract class Binding
 	{
 		public object Value { get; protected set; }
 
@@ -60,20 +60,11 @@ namespace Praeclarum.Bind
 		{
 			Value = value;
 		}
-		~Binding ()
-		{
-			Dispose (false);
-		}
-		public void Dispose ()
-		{
-			Dispose (true);
-			GC.SuppressFinalize (this);
-		}
-		protected virtual void Dispose (bool disposing)
+		public virtual void Unbind ()
 		{
 		}
 
-		public static Binding Create<Y> (Expression<Func<Y>> expr, params Arg[] args)
+		public static Binding Create<T> (Expression<Func<T>> expr, params Arg[] args)
 		{
 			return BindAny (expr, args);
 		}
@@ -145,42 +136,60 @@ namespace Praeclarum.Bind
 
 		class ObjectSubscriptions
 		{
-			object target;
-			MemberInfo member;
+			readonly object target;
+			readonly MemberInfo member;
 
-//			EventInfo eventInfo;
+			EventInfo eventInfo;
 			Delegate eventHandler;
 			
 			public ObjectSubscriptions (object target, MemberInfo mem)
 			{
 				this.target = target;
 				this.member = mem;
+			}
 
+			void SubscribeEvent ()
+			{
 				if (target != null) {
 					var npc = target as INotifyPropertyChanged;
-					if (npc != null && mem.MemberType == MemberTypes.Property) {
+					if (npc != null && member.MemberType == MemberTypes.Property) {
 						// TODO: INotifyPropertyChanged
 					}
 					else {
 						// Look for Changed event
 						var ty = target.GetType ();
-						SubscribeToEvent (target, ty, mem.Name + "Changed", "EditingDidEnd", "ValueChanged", "Changed");
+						SubscribeEvent (target, ty, member.Name + "Changed", "EditingDidEnd", "ValueChanged", "Changed");
 					}
 				}
 			}
 
-			void SubscribeToEvent (object target, Type type, params string[] names)
+			void SubscribeEvent (object target, Type type, params string[] names)
 			{
 				foreach (var name in names) {
 					var ev = type.GetEvent (name);
 
 					if (ev != null) {
-//						eventInfo = ev;
-						eventHandler = (EventHandler)HandleEventHandler;
-						ev.AddEventHandler (target, eventHandler);
-						return;
+						if (typeof(EventHandler).IsAssignableFrom (ev.EventHandlerType)) {
+							eventInfo = ev;
+							eventHandler = (EventHandler)HandleEventHandler;
+							ev.AddEventHandler (target, eventHandler);
+							return;
+						} else {
+							ReportError ("Cannot use event " + name + " because it is not an EventHandler");
+						}
 					}
 				}
+			}
+
+			void UnsubscribeEvent ()
+			{
+				if (eventInfo == null)
+					return;
+
+				eventInfo.RemoveEventHandler (target, eventHandler);
+
+				eventInfo = null;
+				eventHandler = null;
 			}
 
 			void HandleEventHandler (object sender, EventArgs e)
@@ -192,12 +201,20 @@ namespace Praeclarum.Bind
 
 			public void Add (Subscription sub)
 			{
+				if (subscriptions.Count == 0) {
+					SubscribeEvent ();
+				}
+
 				subscriptions.Add (sub);
 			}
 
 			public void Remove (Subscription sub)
 			{
 				subscriptions.Remove (sub);
+
+				if (subscriptions.Count == 0) {
+					UnsubscribeEvent ();
+				}
 			}
 
 			public void Notify (int changeId)
@@ -296,15 +313,13 @@ namespace Praeclarum.Bind
 		public EqualityBinding (Expression left, Expression right, params Arg[] args)
 			: base (null)
 		{
-			//			this.left = left;
-			//			this.right = right;
 			this.args = args;
 
 			// Try evaling the right and assigning left
 			Value = Eval (right, args);
 			var leftSet = SetValue (left, Value, nextChangeId, args);
 
-			// If that didn't work, then try the other direct
+			// If that didn't work, then try the other direction
 			if (!leftSet) {
 				Value = Eval (left, args);
 				SetValue (right, Value, nextChangeId, args);
@@ -319,11 +334,11 @@ namespace Praeclarum.Bind
 			Resubscribe (rightTriggers, right, left);
 		}
 
-		protected override void Dispose (bool disposing)
+		public override void Unbind ()
 		{
 			Unsubscribe (leftTriggers);
 			Unsubscribe (rightTriggers);
-			base.Dispose (disposing);
+			base.Unbind ();
 		}
 
 		void Resubscribe (List<Trigger> triggers, Expression expr, Expression dependentExpr)
