@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bind.iOS", "Bind.iOS\Bind.iOS.csproj", "{8727A565-59A5-4264-B9E6-DD1BE145CD5C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bind.Android", "Bind.Android\Bind.Android.csproj", "{2419858D-6428-4531-AAAB-BBC85A3D02B2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2419858D-6428-4531-AAAB-BBC85A3D02B2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2419858D-6428-4531-AAAB-BBC85A3D02B2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2419858D-6428-4531-AAAB-BBC85A3D02B2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2419858D-6428-4531-AAAB-BBC85A3D02B2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8727A565-59A5-4264-B9E6-DD1BE145CD5C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8727A565-59A5-4264-B9E6-DD1BE145CD5C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8727A565-59A5-4264-B9E6-DD1BE145CD5C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8727A565-59A5-4264-B9E6-DD1BE145CD5C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(MonoDevelopProperties) = preSolution
+		StartupItem = Bind.iOS\Bind.iOS.csproj
+	EndGlobalSection
+EndGlobal
