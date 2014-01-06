@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using System;
+using System.ComponentModel;
 
 namespace Praeclarum.Bind.Test
 {
@@ -152,6 +153,7 @@ namespace Praeclarum.Bind.Test
 			Assert.AreEqual ("Hello Again...", leftB);
 		}
 
+
 		[Test]
 		public void RemovePropertyChanged ()
 		{
@@ -173,6 +175,98 @@ namespace Praeclarum.Bind.Test
 			b.Unbind ();
 
 			Assert.AreEqual (0, obj.StringValueChangedCount);
+
+			obj.StringValue = "Hello Again";
+
+			Assert.AreEqual ("Goodbye", left);
+		}
+
+		class NotifyPropertyChangedEventObject : INotifyPropertyChanged
+		{
+			public int PropertyChangedCount { get; private set; }
+
+			PropertyChangedEventHandler propertyChanged; 
+			public event PropertyChangedEventHandler PropertyChanged 
+			{ 
+				add {
+					propertyChanged += value;
+					PropertyChangedCount++;
+				} 
+				remove {
+					propertyChanged -= value;
+					PropertyChangedCount--;
+				}
+			} 
+
+			string stringValue = "";
+
+			public string StringValue {
+				get { return stringValue; }
+				set {
+					if (stringValue != value) {
+						stringValue = value;
+						if (propertyChanged != null) {
+							propertyChanged (this, new PropertyChangedEventArgs ("StringValue"));
+						}
+					}
+				}
+			}
+
+			int intValue = 0;
+
+			public int IntValue {
+				get { return intValue; }
+				set {
+					if (intValue != value) {
+						intValue = value;
+						if (propertyChanged != null) {
+							propertyChanged (this, new PropertyChangedEventArgs ("IntValue"));
+						}
+					}
+				}
+			}
+		}
+
+		[Test]
+		public void NotifyPropertyChanged ()
+		{
+			var obj = new NotifyPropertyChangedEventObject {
+				StringValue = "Hello",
+			};
+			var left = "";
+
+			Binding.Create (() => left == obj.StringValue);
+
+			Assert.AreEqual (1, obj.PropertyChangedCount);
+
+			Assert.AreEqual (obj.StringValue, left);
+
+			obj.StringValue = "Goodbye";
+
+			Assert.AreEqual ("Goodbye", left);
+		}
+
+		[Test]
+		public void RemoveNotifyPropertyChanged ()
+		{
+			var obj = new NotifyPropertyChangedEventObject {
+				StringValue = "Hello",
+			};
+			var left = "";
+
+			var b = Binding.Create (() => left == obj.StringValue);
+
+			Assert.AreEqual (1, obj.PropertyChangedCount);
+
+			Assert.AreEqual (obj.StringValue, left);
+
+			obj.StringValue = "Goodbye";
+
+			Assert.AreEqual ("Goodbye", left);
+
+			b.Unbind ();
+
+			Assert.AreEqual (0, obj.PropertyChangedCount);
 
 			obj.StringValue = "Hello Again";
 

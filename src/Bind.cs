@@ -28,6 +28,10 @@ namespace Praeclarum.Bind
 {
 	using Arg = KeyValuePair<ParameterExpression, object>;
 
+	/// <summary>
+	/// A Subscription is an action tied to a particular member of an object.
+	/// When Notify is called, the action is executed.
+	/// </summary>
 	public class Subscription
 	{
 		readonly Action<int> action;
@@ -60,6 +64,7 @@ namespace Praeclarum.Bind
 		{
 			Value = value;
 		}
+
 		public virtual void Unbind ()
 		{
 		}
@@ -148,23 +153,22 @@ namespace Praeclarum.Bind
 				this.member = mem;
 			}
 
-			void SubscribeEvent ()
+			void SubscribeToChangeNotificationEvent ()
 			{
 				if (target != null) {
 					var npc = target as INotifyPropertyChanged;
 					if (npc != null && member.MemberType == MemberTypes.Property) {
-						// TODO: INotifyPropertyChanged
+						npc.PropertyChanged += HandleNotifyPropertyChanged;
 					}
 					else {
-						// Look for Changed event
-						var ty = target.GetType ();
-						SubscribeEvent (target, ty, member.Name + "Changed", "EditingDidEnd", "ValueChanged", "Changed");
+						SubscribeToAnyEvent (member.Name + "Changed", "EditingDidEnd", "ValueChanged", "Changed");
 					}
 				}
 			}
 
-			void SubscribeEvent (object target, Type type, params string[] names)
+			void SubscribeToAnyEvent (params string[] names)
 			{
+				var type = target.GetType ();
 				foreach (var name in names) {
 					var ev = type.GetEvent (name);
 
@@ -183,6 +187,12 @@ namespace Praeclarum.Bind
 
 			void UnsubscribeEvent ()
 			{
+				var npc = target as INotifyPropertyChanged;
+				if (npc != null && member.MemberType == MemberTypes.Property) {
+					npc.PropertyChanged -= HandleNotifyPropertyChanged;
+					return;
+				}
+
 				if (eventInfo == null)
 					return;
 
@@ -190,6 +200,12 @@ namespace Praeclarum.Bind
 
 				eventInfo = null;
 				eventHandler = null;
+			}
+
+			void HandleNotifyPropertyChanged (object sender, PropertyChangedEventArgs e)
+			{
+				if (e.PropertyName == member.Name)
+					Binding.Invalidate (target, member);
 			}
 
 			void HandleEventHandler (object sender, EventArgs e)
@@ -202,7 +218,7 @@ namespace Praeclarum.Bind
 			public void Add (Subscription sub)
 			{
 				if (subscriptions.Count == 0) {
-					SubscribeEvent ();
+					SubscribeToChangeNotificationEvent ();
 				}
 
 				subscriptions.Add (sub);
@@ -262,12 +278,12 @@ namespace Praeclarum.Bind
 			}
 		}
 
-		public static void Invalidate (object obj, MemberInfo member, int changeId = 0)
+		public static void Invalidate (object target, MemberInfo member, int changeId = 0)
 		{
-			var key = Tuple.Create (obj, member);
+			var key = Tuple.Create (target, member);
 			ObjectSubscriptions subs;
 			if (objectSubs.TryGetValue (key, out subs)) {
-				Debug.WriteLine ("INVALIDATE {0} {1}", obj, member.Name);
+				Debug.WriteLine ("INVALIDATE {0} {1}", target, member.Name);
 				subs.Notify (changeId);
 			}
 		}
@@ -293,7 +309,10 @@ namespace Praeclarum.Bind
 	}
 
 	/// <summary>
-	/// Binding between two values.
+	/// Binding between two values. Calling Invalidate() on either value causes
+	/// the binding value to be updated and the corresponding value to be updated.
+	/// Objects that support change notification events will automatically call
+	/// invalidate.
 	/// </summary>
 	public class EqualityBinding : Binding
 	{
@@ -304,7 +323,6 @@ namespace Praeclarum.Bind
 			public Subscription Subscription;
 		}
 		
-		//		Expression left, right;
 		Arg[] args;
 		
 		List<Trigger> leftTriggers = new List<Trigger> ();
