@@ -73,14 +73,14 @@ Consider the case of displaying a person's full name and allowing them to enter 
 
         public override void ViewDidLoad ()
         {
-            Binding.Create (() =>
-                firstNameEdit.Text == person.FirstName &&
-                lastNameEdit.Text == person.LastName &&
-                fullNameLabel.Text == person.FirstName + " " + person.LastName);
+            Binding.Create (() => firstNameEdit.Text == person.FirstName);
+            Binding.Create (() => lastNameEdit.Text == person.LastName);
+            Binding.Create (() => fullNameLabel.Text == person.LastName + ", " + person.FirstName);
+            Binding.Create (() => Title == person.LastName + ", " + person.FirstName);
         }
     }
 
-Here we have bound `fullNameLabel.Text` to a complex expression involving two variables. When either of these values change, the label will be automatically updated.
+Here we have bound `fullNameLabel.Text` and the view controller's `Title` to a complex expression involving two variables. When either of these values change, the text will be automatically updated.
 
 Complex expression disrupt two-way databinding - updates will only flow from the complex side to the simple side.
 
@@ -89,13 +89,31 @@ Bindings with complex expressions on both sides are meaningless. (Technically, t
 
 #### Change Tracking
 
+You must call `Invalidate` to update a binding if the value comes from an object that does not implement [Automatic Change Tracking][].
+
+Invalidate takes a lambda returning the property that changed:
+
+    Binding.Invalidate (() => obj.Property);
+
 
 #### Automatic Change Tracking
+
+Objects that implement the `INotifyPropertyChanged` interface or that has any of these events:
+
+* *Property*Changed (where *Property* is the name of the property that causes the event)
+* EditingDidEnd
+* ValueChanged
+* Changed
+
+will be automatically change tracked.
+
+
 
 
 
 #### Unbinding
 
+Call `Unbind` on the object returned from `Binding.Create` to cancel the binding.
 
 
 
