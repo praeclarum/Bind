@@ -1,6 +1,8 @@
 # Praeclarum.Bind
 
-Bind allows you to bind two object graphs together so that their values remain in sync. The binding is two-way, so any edits to either graph will be reflected in the other graph.
+Bind gives you easy two-way data binding between properties of objects. These objects can be UI elements, plain old data, or complex model objects, whatever.
+
+Values are automatically updated if the object classes implement property changed events.
 
 This is especially useful when creating UI code where you want to display and edit model values.
 
