@@ -203,11 +203,12 @@ namespace Praeclarum.Bind
 					var eventParams = handlerInvokeInfo.GetParameters();
 
 					//lambda: (object x0, EventArgs x1) => d()
-					var parameters = eventParams.Select(p => Expression.Parameter(p.ParameterType, p.Name));
+					var parameters = eventParams.Select(p => Expression.Parameter(p.ParameterType, p.Name)).ToArray ();
 					var body = Expression.Call(Expression.Constant(d), d.GetType().GetTypeInfo ().GetDeclaredMethod ("Invoke"));
-					var lambda = Expression.Lambda(body, parameters.ToArray());
+					var lambda = Expression.Lambda(body, parameters);
 
-					return lambda.Compile ().GetMethodInfo ().CreateDelegate (handlerType, null);
+					var delegateInvokeInfo = lambda.Compile ().GetMethodInfo ();
+					return delegateInvokeInfo.CreateDelegate (handlerType, null);
 				}
 			}
 

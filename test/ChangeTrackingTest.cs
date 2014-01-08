@@ -272,6 +272,66 @@ namespace Praeclarum.Bind.Test
 
 			Assert.AreEqual ("Goodbye", left);
 		}
+
+		class NotEventHandlerObject
+		{
+			string stringValue = "";
+
+			public int StringValueChangedCount { get; private set; }
+
+			Action<string, string> stringValueChanged; 
+			public event Action<string, string> StringValueChanged 
+			{ 
+				add {
+					stringValueChanged += value;
+					StringValueChangedCount++;
+				} 
+				remove {
+					stringValueChanged -= value;
+					StringValueChangedCount--;
+				}
+			} 
+
+			public string StringValue {
+				get { return stringValue; }
+				set {
+					if (stringValue != value) {
+						var oldValue = stringValue;
+						stringValue = value;
+						if (stringValueChanged != null) {
+							stringValueChanged (oldValue, stringValue);
+						}
+					}
+				}
+			}
+		}
+
+		[Test]
+		public void NotifyNotEventHandler ()
+		{
+			var obj = new NotEventHandlerObject {
+				StringValue = "Hello",
+			};
+			var left = "";
+
+			var b = Binding.Create (() => left == obj.StringValue);
+
+			Assert.AreEqual (1, obj.StringValueChangedCount);
+
+			Assert.AreEqual (obj.StringValue, left);
+
+			obj.StringValue = "Goodbye";
+
+			Assert.AreEqual ("Goodbye", left);
+
+			b.Unbind ();
+
+			Assert.AreEqual (0, obj.StringValueChangedCount);
+
+			obj.StringValue = "Hello Again";
+
+			Assert.AreEqual ("Goodbye", left);
+		}
 	}
 }
 
