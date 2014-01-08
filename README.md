@@ -57,6 +57,46 @@ Bindings are symmetric, so you could just as well have written:
 Then only difference occurs at initialization: the `stateEdit.Text` value is assigned to the `person.Address.State` value instead of the other way around.
 
 
+#### Complex Equality Binding
+
+Sometimes you will want to bind a transformation or composition of data.
+
+Consider the case of displaying a person's full name and allowing them to enter that data using text boxes:
+
+    class PersonViewController : UIViewController
+    {
+        UITextField firstNameEdit;
+        UITextField lastNameEdit;
+        UILabel fullNameLabel;
+
+        Person person;
+
+        public override void ViewDidLoad ()
+        {
+            Binding.Create (() =>
+                firstNameEdit.Text == person.FirstName &&
+                lastNameEdit.Text == person.LastName &&
+                fullNameLabel.Text == person.FirstName + " " + person.LastName);
+        }
+    }
+
+Here we have bound `fullNameLabel.Text` to a complex expression involving two variables. When either of these values change, the label will be automatically updated.
+
+Complex expression disrupt two-way databinding - updates will only flow from the complex side to the simple side.
+
+Bindings with complex expressions on both sides are meaningless. (Technically, they define a algebraic loop that must be solved. I haven't implemented this and probably never will.)
+
+
+#### Change Tracking
+
+
+#### Automatic Change Tracking
+
+
+
+#### Unbinding
+
+
 
 
 ## Error Handling
