@@ -105,14 +105,15 @@ namespace Praeclarum.Bind
 
 				var target = Eval (m.Expression, args);
 
-				if (mem.MemberType == MemberTypes.Field) {
-					var f = (FieldInfo)mem;
+				var f = mem as FieldInfo;
+				var p = mem as PropertyInfo;
+
+				if (f != null) {
 					f.SetValue (target, value);
-				} else if (mem.MemberType == MemberTypes.Property) {
-					var p = (PropertyInfo)mem;
+				} else if (p != null) {
 					p.SetValue (target, value, null);
 				} else {
-					ReportError ("Trying to SetValue on " + mem.MemberType + " member");
+					ReportError ("Trying to SetValue on " + mem.GetType () + " member");
 					return false;
 				}
 
@@ -157,7 +158,7 @@ namespace Praeclarum.Bind
 			{
 				if (target != null) {
 					var npc = target as INotifyPropertyChanged;
-					if (npc != null && member.MemberType == MemberTypes.Property) {
+					if (npc != null && (member is PropertyInfo)) {
 						npc.PropertyChanged += HandleNotifyPropertyChanged;
 					}
 					else {
@@ -170,10 +171,10 @@ namespace Praeclarum.Bind
 			{
 				var type = target.GetType ();
 				foreach (var name in names) {
-					var ev = type.GetEvent (name);
+					var ev = type.GetTypeInfo ().GetDeclaredEvent (name);
 
 					if (ev != null) {
-                        if (typeof(EventHandler).IsAssignableFrom(ev.EventHandlerType))
+						if (typeof(EventHandler).GetTypeInfo ().IsAssignableFrom (ev.EventHandlerType.GetTypeInfo ()))
                         {
                             eventInfo = ev;
                             eventHandler = (EventHandler)HandleEventHandler;
@@ -183,6 +184,7 @@ namespace Praeclarum.Bind
                         else
                         {
                             // handles non-EventHandler event types through dynamica lambda creation
+							eventInfo = ev;
                             eventHandler = EventProxy.Create(ev, () => HandleEventHandler(null, EventArgs.Empty));
                             ev.AddEventHandler(target, eventHandler);
                             return;
@@ -191,10 +193,25 @@ namespace Praeclarum.Bind
 				}
 			}
 
+			static class EventProxy
+			{
+				public static Delegate Create(EventInfo evt, Action d)
+				{
+					var handlerType = evt.EventHandlerType;
+					var eventParams = handlerType.GetMethod("Invoke").GetParameters();
+
+					//lambda: (object x0, EventArgs x1) => d()
+					var parameters = eventParams.Select(p => Expression.Parameter(p.ParameterType, p.Name));
+					var body = Expression.Call(Expression.Constant(d), d.GetType().GetMethod("Invoke"));
+					var lambda = Expression.Lambda(body, parameters.ToArray());
+					return Delegate.CreateDelegate(handlerType, lambda.Compile(), "Invoke", false);
+				}
+			}
+
 			void UnsubscribeEvent ()
 			{
 				var npc = target as INotifyPropertyChanged;
-				if (npc != null && member.MemberType == MemberTypes.Property) {
+				if (npc != null && (member is PropertyInfo)) {
 					npc.PropertyChanged -= HandleNotifyPropertyChanged;
 					return;
 				}
@@ -491,12 +508,12 @@ namespace Praeclarum.Bind
 					
 					var boundValue = BindNewObject (assignment.Expression, args);
 					
-					if (member.MemberType == System.Reflection.MemberTypes.Property) {
+					if (member is PropertyInfo) {
 						var prop = (PropertyInfo)member;
 						prop.SetValue (obj, boundValue, null);
 					}
 					else {
-						throw new NotSupportedException (member.MemberType + "");
+						throw new NotSupportedException (member.GetType () + "");
 					}
 				}
 				else {
@@ -511,7 +528,7 @@ namespace Praeclarum.Bind
 		{
 			var method = methodCall.Method;
 			
-			if (typeof(IEnumerable).IsAssignableFrom (method.ReturnType)) {
+			if (typeof(IEnumerable).GetTypeInfo ().IsAssignableFrom (method.ReturnType.GetTypeInfo ())) {
 				
 				if (methodCall.Method.Name == "Select") {
 					return new SelectLinqCollection (methodCall, args);
