@@ -17,6 +17,12 @@ namespace Bind.iOS
 		public PersonViewController (Person person)
 		{
 			this.person = person;
+
+			NavigationItem.RightBarButtonItem = new UIBarButtonItem (
+				UIBarButtonSystemItem.Done,
+				delegate {
+					new UIAlertView ("", "Good job, " + person.FullName, null, "OK").Show ();
+				});
 		}
 
 		public override void ViewDidLoad ()
