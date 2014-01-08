@@ -50,7 +50,6 @@
     <Reference Include="Mono.Android" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="EventProxy.cs" />
     <Compile Include="Resources\Resource.designer.cs" />
     <Compile Include="..\Bind.cs">
       <Link>Bind.cs</Link>

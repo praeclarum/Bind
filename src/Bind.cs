@@ -198,13 +198,16 @@ namespace Praeclarum.Bind
 				public static Delegate Create(EventInfo evt, Action d)
 				{
 					var handlerType = evt.EventHandlerType;
-					var eventParams = handlerType.GetMethod("Invoke").GetParameters();
+					var handlerTypeInfo = handlerType.GetTypeInfo ();
+					var handlerInvokeInfo = handlerTypeInfo.GetDeclaredMethod ("Invoke");
+					var eventParams = handlerInvokeInfo.GetParameters();
 
 					//lambda: (object x0, EventArgs x1) => d()
 					var parameters = eventParams.Select(p => Expression.Parameter(p.ParameterType, p.Name));
-					var body = Expression.Call(Expression.Constant(d), d.GetType().GetMethod("Invoke"));
+					var body = Expression.Call(Expression.Constant(d), d.GetType().GetTypeInfo ().GetDeclaredMethod ("Invoke"));
 					var lambda = Expression.Lambda(body, parameters.ToArray());
-					return Delegate.CreateDelegate(handlerType, lambda.Compile(), "Invoke", false);
+
+					return lambda.Compile ().GetMethodInfo ().CreateDelegate (handlerType, null);
 				}
 			}
 
