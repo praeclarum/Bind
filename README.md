@@ -25,9 +25,9 @@ This is especially useful when creating UI code where you want to display and ed
 
 ## Installation
 
-Bind can be included in your project by simply including `Bind.cs` in your project. It will work in any .NET 4 project.
+Bind can be included in your project by simply including `Bind.cs` in your project. It will work in any .NET 4.5 project.
 
-(Bind will not work in Windows Store apps because Microsoft broke System.Reflection's API. Write to your local evangelist and tell them to fix it.)
+There is even a Portable Class Library version of the project that works on Profile 78 (which includes everything except Silverlight 5).
 
 
 
