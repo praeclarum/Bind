@@ -173,14 +173,20 @@ namespace Praeclarum.Bind
 					var ev = type.GetEvent (name);
 
 					if (ev != null) {
-						if (typeof(EventHandler).IsAssignableFrom (ev.EventHandlerType)) {
-							eventInfo = ev;
-							eventHandler = (EventHandler)HandleEventHandler;
-							ev.AddEventHandler (target, eventHandler);
-							return;
-						} else {
-							ReportError ("Cannot use event " + name + " because it is not an EventHandler");
-						}
+                        if (typeof(EventHandler).IsAssignableFrom(ev.EventHandlerType))
+                        {
+                            eventInfo = ev;
+                            eventHandler = (EventHandler)HandleEventHandler;
+                            ev.AddEventHandler(target, eventHandler);
+                            return;
+                        }
+                        else
+                        {
+                            // handles non-EventHandler event types through dynamica lambda creation
+                            eventHandler = EventProxy.Create(ev, () => HandleEventHandler(null, EventArgs.Empty));
+                            ev.AddEventHandler(target, eventHandler);
+                            return;
+                        }
 					}
 				}
 			}
