@@ -27,6 +27,6 @@ Global
 		{8727A565-59A5-4264-B9E6-DD1BE145CD5C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(MonoDevelopProperties) = preSolution
-		StartupItem = Bind.iOS\Bind.iOS.csproj
+		StartupItem = Bind.Android\Bind.Android.csproj
 	EndGlobalSection
 EndGlobal

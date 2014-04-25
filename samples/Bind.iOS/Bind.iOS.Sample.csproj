@@ -104,6 +104,8 @@
     <Compile Include="Model\Person.cs" />
     <Compile Include="PersonViewController.cs" />
     <Compile Include="Layout.cs" />
+    <Compile Include="PeopleViewController.cs" />
+    <Compile Include="PersonTableViewCell.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ItemGroup>

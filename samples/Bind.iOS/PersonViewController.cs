@@ -4,7 +4,7 @@ using MonoTouch.UIKit;
 using Praeclarum.Bind;
 using Praeclarum.UI;
 
-namespace Bind.iOS
+namespace Bind.iOS.Sample
 {
 	public class PersonViewController : UIViewController
 	{

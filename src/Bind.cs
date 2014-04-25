@@ -171,7 +171,7 @@ namespace Praeclarum.Bind
 			{
 				var type = target.GetType ();
 				foreach (var name in names) {
-					var ev = type.GetTypeInfo ().GetDeclaredEvent (name);
+					var ev = type.GetEvent (name);
 
 					if (ev != null) {
 						if (typeof(EventHandler).GetTypeInfo ().IsAssignableFrom (ev.EventHandlerType.GetTypeInfo ()))
