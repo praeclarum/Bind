@@ -153,10 +153,10 @@ namespace Praeclarum.Bind
 						npc.PropertyChanged += HandleNotifyPropertyChanged;
 					}
 					else {
-						var added = AddHandlerForFirstExistingEvent (member.Name + "Changed", "EditingDidEnd", "ValueChanged", "Changed");
-						if (!added) {
-							Debug.WriteLine ("Failed to bind to change event for " + target);
-						}
+						AddHandlerForFirstExistingEvent (member.Name + "Changed", "EditingDidEnd", "ValueChanged", "Changed");
+//						if (!added) {
+//							Debug.WriteLine ("Failed to bind to change event for " + target);
+//						}
 					}
 				}
 			}
@@ -175,8 +175,8 @@ namespace Praeclarum.Bind
 							(EventHandler)HandleAnyEvent : 
 							CreateGenericEventHandler (ev, () => HandleAnyEvent (null, EventArgs.Empty));
 
-						Debug.WriteLine ("ADD HANDLER {0} to {1}", eventInfo, target);
 						ev.AddEventHandler(target, eventHandler);
+						Debug.WriteLine ("BIND: Added handler for {0} on {1}", eventInfo.Name, target);
 						return true;
 					}
 				}
@@ -224,6 +224,8 @@ namespace Praeclarum.Bind
 					return;
 
 				eventInfo.RemoveEventHandler (target, eventHandler);
+
+				Debug.WriteLine ("BIND: Removed handler for {0} on {1}", eventInfo.Name, target);
 
 				eventInfo = null;
 				eventHandler = null;
@@ -519,5 +521,27 @@ namespace Praeclarum.Bind
 			bindings.Clear ();
 		}
 	}
+
+	#if __IOS__
+	[MonoTouch.Foundation.Preserve]
+	static class PreserveEventsAndSettersHack
+	{
+		[MonoTouch.Foundation.Preserve]
+		static void Hack ()
+		{
+			var l = new MonoTouch.UIKit.UILabel ();
+			l.Text = l.Text + "";
+
+			var tf = new MonoTouch.UIKit.UITextField ();
+			tf.Text = tf.Text + "";
+			tf.EditingDidEnd += delegate {};
+			tf.ValueChanged += delegate {};
+
+			var vc = new MonoTouch.UIKit.UIViewController ();
+			vc.Title = vc.Title + "";
+			vc.Editing = !vc.Editing;
+		}
+	}
+	#endif
 }
 
