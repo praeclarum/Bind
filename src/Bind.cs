@@ -29,17 +29,17 @@ namespace Praeclarum.Bind
 	using Arg = KeyValuePair<ParameterExpression, object>;
 
 	/// <summary>
-	/// A Subscription is an action tied to a particular member of an object.
+	/// An action tied to a particular member of an object.
 	/// When Notify is called, the action is executed.
 	/// </summary>
-	public class Subscription
+	public class MemberChangeAction
 	{
 		readonly Action<int> action;
 
 		public object Target { get; private set; }
 		public MemberInfo Member { get; private set; }
 
-		public Subscription (object target, MemberInfo member, Action<int> action)
+		public MemberChangeAction (object target, MemberInfo member, Action<int> action)
 		{
 			this.Target = target;
 			if (member == null)
@@ -94,7 +94,7 @@ namespace Praeclarum.Bind
 			//
 			// This must be a new object binding (a template)
 			//
-			return new NewObjectBinding (expr, args);
+			throw new NotSupportedException ("Only equality bindings are supported.");
 		}
 
 		protected static bool SetValue (Expression expr, object value, int changeId, params Arg[] args)
@@ -117,7 +117,7 @@ namespace Praeclarum.Bind
 					return false;
 				}
 
-				Invalidate (target, mem, changeId);
+				InvalidateMember (target, mem, changeId);
 				return true;
 			}
 
@@ -140,7 +140,7 @@ namespace Praeclarum.Bind
 
 		#region Change Notification
 
-		class ObjectSubscriptions
+		class MemberActions
 		{
 			readonly object target;
 			readonly MemberInfo member;
@@ -148,13 +148,13 @@ namespace Praeclarum.Bind
 			EventInfo eventInfo;
 			Delegate eventHandler;
 			
-			public ObjectSubscriptions (object target, MemberInfo mem)
+			public MemberActions (object target, MemberInfo mem)
 			{
 				this.target = target;
 				this.member = mem;
 			}
 
-			void SubscribeToChangeNotificationEvent ()
+			void AddChangeNotificationEventHandler ()
 			{
 				if (target != null) {
 					var npc = target as INotifyPropertyChanged;
@@ -162,57 +162,63 @@ namespace Praeclarum.Bind
 						npc.PropertyChanged += HandleNotifyPropertyChanged;
 					}
 					else {
-						SubscribeToAnyEvent (member.Name + "Changed", "EditingDidEnd", "ValueChanged", "Changed");
+						var added = AddHandlerForFirstExistingEvent (member.Name + "Changed", "EditingDidEnd", "ValueChanged", "Changed");
 					}
 				}
 			}
 
-			void SubscribeToAnyEvent (params string[] names)
+			bool AddHandlerForFirstExistingEvent (params string[] names)
 			{
 				var type = target.GetType ();
 				foreach (var name in names) {
-					var ev = type.GetEvent (name);
+					var ev = GetEvent (type, name);
 
 					if (ev != null) {
-						if (typeof(EventHandler).GetTypeInfo ().IsAssignableFrom (ev.EventHandlerType.GetTypeInfo ()))
-                        {
-                            eventInfo = ev;
-                            eventHandler = (EventHandler)HandleEventHandler;
-                            ev.AddEventHandler(target, eventHandler);
-                            return;
+						eventInfo = ev;
+						if (typeof(EventHandler).GetTypeInfo ().IsAssignableFrom (ev.EventHandlerType.GetTypeInfo ())) {
+                            eventHandler = (EventHandler)HandleAnyEvent;
                         }
-                        else
-                        {
-                            // handles non-EventHandler event types through dynamica lambda creation
-							eventInfo = ev;
-                            eventHandler = EventProxy.Create(ev, () => HandleEventHandler(null, EventArgs.Empty));
-                            ev.AddEventHandler(target, eventHandler);
-                            return;
+						else {
+							eventHandler = CreateGenericEventHandler (ev, () => HandleAnyEvent(null, EventArgs.Empty));
                         }
+						Debug.WriteLine ("ADD HANDLER {0}", eventInfo);
+						ev.AddEventHandler(target, eventHandler);
+						return true;
 					}
 				}
+				return false;
 			}
 
-			static class EventProxy
+			static EventInfo GetEvent (Type type, string eventName)
 			{
-				public static Delegate Create(EventInfo evt, Action d)
-				{
-					var handlerType = evt.EventHandlerType;
-					var handlerTypeInfo = handlerType.GetTypeInfo ();
-					var handlerInvokeInfo = handlerTypeInfo.GetDeclaredMethod ("Invoke");
-					var eventParams = handlerInvokeInfo.GetParameters();
-
-					//lambda: (object x0, EventArgs x1) => d()
-					var parameters = eventParams.Select(p => Expression.Parameter(p.ParameterType, p.Name)).ToArray ();
-					var body = Expression.Call(Expression.Constant(d), d.GetType().GetTypeInfo ().GetDeclaredMethod ("Invoke"));
-					var lambda = Expression.Lambda(body, parameters);
-
-					var delegateInvokeInfo = lambda.Compile ().GetMethodInfo ();
-					return delegateInvokeInfo.CreateDelegate (handlerType, null);
+				var t = type;
+				while (t != null && t != typeof(object)) {
+					var ti = t.GetTypeInfo ();
+					var ev = t.GetTypeInfo ().GetDeclaredEvent (eventName);
+					if (ev != null)
+						return ev;
+					t = ti.BaseType;
 				}
+				return null;
 			}
 
-			void UnsubscribeEvent ()
+			static Delegate CreateGenericEventHandler (EventInfo evt, Action d)
+			{
+				var handlerType = evt.EventHandlerType;
+				var handlerTypeInfo = handlerType.GetTypeInfo ();
+				var handlerInvokeInfo = handlerTypeInfo.GetDeclaredMethod ("Invoke");
+				var eventParams = handlerInvokeInfo.GetParameters();
+
+				//lambda: (object x0, EventArgs x1) => d()
+				var parameters = eventParams.Select(p => Expression.Parameter(p.ParameterType, p.Name)).ToArray ();
+				var body = Expression.Call(Expression.Constant(d), d.GetType().GetTypeInfo ().GetDeclaredMethod ("Invoke"));
+				var lambda = Expression.Lambda(body, parameters);
+
+				var delegateInvokeInfo = lambda.Compile ().GetMethodInfo ();
+				return delegateInvokeInfo.CreateDelegate (handlerType, null);
+			}
+
+			void UnsubscribeFromChangeNotificationEvent ()
 			{
 				var npc = target as INotifyPropertyChanged;
 				if (npc != null && (member is PropertyInfo)) {
@@ -232,85 +238,91 @@ namespace Praeclarum.Bind
 			void HandleNotifyPropertyChanged (object sender, PropertyChangedEventArgs e)
 			{
 				if (e.PropertyName == member.Name)
-					Binding.Invalidate (target, member);
+					Binding.InvalidateMember (target, member);
 			}
 
-			void HandleEventHandler (object sender, EventArgs e)
+			void HandleAnyEvent (object sender, EventArgs e)
 			{
-				Binding.Invalidate (target, member);
+				Binding.InvalidateMember (target, member);
 			}
 
-			readonly List<Subscription> subscriptions = new List<Subscription> ();
+			readonly List<MemberChangeAction> actions = new List<MemberChangeAction> ();
 
-			public void Add (Subscription sub)
+			/// <summary>
+			/// Add the specified action to be executed when Notify() is called.
+			/// </summary>
+			/// <param name="action">Action.</param>
+			public void AddAction (MemberChangeAction action)
 			{
-				if (subscriptions.Count == 0) {
-					SubscribeToChangeNotificationEvent ();
+				if (actions.Count == 0) {
+					AddChangeNotificationEventHandler ();
 				}
 
-				subscriptions.Add (sub);
+				actions.Add (action);
 			}
 
-			public void Remove (Subscription sub)
+			public void RemoveAction (MemberChangeAction action)
 			{
-				subscriptions.Remove (sub);
+				actions.Remove (action);
 
-				if (subscriptions.Count == 0) {
-					UnsubscribeEvent ();
+				if (actions.Count == 0) {
+					UnsubscribeFromChangeNotificationEvent ();
 				}
 			}
 
+			/// <summary>
+			/// Execute all the actions.
+			/// </summary>
+			/// <param name="changeId">Change identifier.</param>
 			public void Notify (int changeId)
 			{
-				foreach (var s in subscriptions) {
+				foreach (var s in actions) {
 					s.Notify (changeId);
 				}
 			}
 		}
 
-		static Dictionary<Tuple<Object, MemberInfo>, ObjectSubscriptions> objectSubs = new Dictionary<Tuple<Object, MemberInfo>, ObjectSubscriptions> ();
+		static readonly Dictionary<Tuple<Object, MemberInfo>, MemberActions> objectSubs = new Dictionary<Tuple<Object, MemberInfo>, MemberActions> ();
 
-		public static Subscription Subscribe (object target, MemberInfo member, Action<int> k)
+		public static MemberChangeAction AddMemberChangeAction (object target, MemberInfo member, Action<int> k)
 		{
 			var key = Tuple.Create (target, member);
-			ObjectSubscriptions subs;
+			MemberActions subs;
 			if (!objectSubs.TryGetValue (key, out subs)) {
-				subs = new ObjectSubscriptions (target, member);
+				subs = new MemberActions (target, member);
 				objectSubs.Add (key, subs);
 			}
 
-			Debug.WriteLine ("SUBSCRIBE " + target + " " + member);
-			var sub = new Subscription (target, member, k);
-			subs.Add (sub);
+//			Debug.WriteLine ("ADD CHANGE ACTION " + target + " " + member);
+			var sub = new MemberChangeAction (target, member, k);
+			subs.AddAction (sub);
 			return sub;
 		}
 
-		public static void Unsubscribe (Subscription sub)
+		public static void RemoveMemberChangeAction (MemberChangeAction sub)
 		{
 			var key = Tuple.Create (sub.Target, sub.Member);
-			ObjectSubscriptions subs;
+			MemberActions subs;
 			if (objectSubs.TryGetValue (key, out subs)) {
-				Debug.WriteLine ("UNSUBSCRIBE " + sub.Target + " " + sub.Member);
-				subs.Remove (sub);
+//				Debug.WriteLine ("REMOVE CHANGE ACTION " + sub.Target + " " + sub.Member);
+				subs.RemoveAction (sub);
 			}
 		}
 
-		public static void Invalidate<T> (Expression<Func<T>> lambdaExpr, int changeId = 0)
-		{
-			var body = lambdaExpr.Body;
-			if (body.NodeType == ExpressionType.MemberAccess) {
-				var m = (MemberExpression)body;
-				var obj = Eval (m.Expression);
-				Invalidate (obj, m.Member, changeId);
-			}
-		}
-
-		public static void Invalidate (object target, MemberInfo member, int changeId = 0)
+		/// <summary>
+		/// Invalidate the specified object member. This will cause all actions
+		/// associated with that member to be executed.
+		/// This is the main mechanism by which binding values are distributed.
+		/// </summary>
+		/// <param name="target">Target object</param>
+		/// <param name="member">Member of the object that changed</param>
+		/// <param name="changeId">Change identifier</param>
+		public static void InvalidateMember (object target, MemberInfo member, int changeId = 0)
 		{
 			var key = Tuple.Create (target, member);
-			ObjectSubscriptions subs;
+			MemberActions subs;
 			if (objectSubs.TryGetValue (key, out subs)) {
-				Debug.WriteLine ("INVALIDATE {0} {1}", target, member.Name);
+//				Debug.WriteLine ("INVALIDATE {0} {1}", target, member.Name);
 				subs.Notify (changeId);
 			}
 		}
@@ -347,13 +359,13 @@ namespace Praeclarum.Bind
 		{
 			public Expression Expression;
 			public MemberInfo Member;
-			public Subscription Subscription;
+			public MemberChangeAction Subscription;
 		}
 		
-		Arg[] args;
+		readonly Arg[] args;
 		
-		List<Trigger> leftTriggers = new List<Trigger> ();
-		List<Trigger> rightTriggers = new List<Trigger> ();
+		readonly List<Trigger> leftTriggers = new List<Trigger> ();
+		readonly List<Trigger> rightTriggers = new List<Trigger> ();
 		
 		public EqualityBinding (Expression left, Expression right, params Arg[] args)
 			: base (null)
@@ -416,7 +428,7 @@ namespace Praeclarum.Bind
 				SetValue (dependentExpr, v, changeId, args);
 				activeChangeIds.Remove (changeId);
 			} else {
-				Debug.WriteLine ("Prevented needless update");
+//				Debug.WriteLine ("Prevented needless update");
 			}
 		}
 
@@ -424,7 +436,7 @@ namespace Praeclarum.Bind
 		{
 			foreach (var t in triggers) {
 				if (t.Subscription != null) {
-					Unsubscribe (t.Subscription);
+					RemoveMemberChangeAction (t.Subscription);
 				}
 			}
 		}
@@ -432,7 +444,7 @@ namespace Praeclarum.Bind
 		void Subscribe (List<Trigger> triggers, Action<int> k)
 		{
 			foreach (var t in triggers) {
-				t.Subscription = Subscribe (Eval (t.Expression), t.Member, k);
+				t.Subscription = AddMemberChangeAction (Eval (t.Expression), t.Member, k);
 			}
 		}		
 		
@@ -451,169 +463,6 @@ namespace Praeclarum.Bind
 				CollectTriggers (b.Left, triggers);
 				CollectTriggers (b.Right, triggers);
 			}
-		}
-	}
-	
-	public class NewObjectBinding : Binding
-	{
-		public NewObjectBinding (Expression expression, params Arg[] args)
-			: base (null)
-		{
-			BindNewObject (expression, args);
-		}
-
-		static object BindNewObject (Expression expression, params Arg[] args)
-		{
-			switch (expression.NodeType) {
-			case ExpressionType.MemberInit:
-				return BindMemberInit ((MemberInitExpression)expression, args);
-			case ExpressionType.Call:
-				return BindMethodCall ((MethodCallExpression)expression, args);
-			case ExpressionType.NewArrayInit:
-				return BindNewArrayInit ((NewArrayExpression)expression, args);
-			case ExpressionType.MemberAccess:
-				return BindMember ((MemberExpression)expression, args);
-			case ExpressionType.Add:
-				return BindAdd ((BinaryExpression)expression, args);
-			case ExpressionType.Constant:
-				return BindConstant ((ConstantExpression)expression, args);
-			default:
-				throw new NotSupportedException (expression.NodeType + "");
-			}
-		}
-
-		static object BindConstant (ConstantExpression constExpression, params Arg[] args)
-		{
-			var v = constExpression.Value;
-			return v;
-		}
-
-		static object BindAdd (BinaryExpression memberExpression, params Arg[] args)
-		{
-			var v = Eval (memberExpression, args);
-			return v;
-		}
-		
-		static object BindMember (MemberExpression memberExpression, params Arg[] args)
-		{
-			var v = Eval (memberExpression, args);
-			return v;
-		}
-		
-		static object BindMemberInit (MemberInitExpression memberInit, params Arg[] args)
-		{
-			var objType = memberInit.Type;
-			var obj = Activator.CreateInstance (objType);
-			
-			foreach (var binding in memberInit.Bindings) {
-				if (binding.BindingType == MemberBindingType.Assignment) {
-					var assignment = (MemberAssignment)binding;
-					var member = binding.Member;
-					
-					var boundValue = BindNewObject (assignment.Expression, args);
-					
-					if (member is PropertyInfo) {
-						var prop = (PropertyInfo)member;
-						prop.SetValue (obj, boundValue, null);
-					}
-					else {
-						throw new NotSupportedException (member.GetType () + "");
-					}
-				}
-				else {
-					throw new NotSupportedException (binding.BindingType + "");
-				}
-			}
-			
-			return obj;
-		}
-		
-		static object BindMethodCall (MethodCallExpression methodCall, Arg[] args)
-		{
-			var method = methodCall.Method;
-			
-			if (typeof(IEnumerable).GetTypeInfo ().IsAssignableFrom (method.ReturnType.GetTypeInfo ())) {
-				
-				if (methodCall.Method.Name == "Select") {
-					return new SelectLinqCollection (methodCall, args);
-				}
-				else {
-					throw new NotSupportedException (methodCall + "");
-				}
-				
-			}
-			else {
-				throw new NotSupportedException (methodCall + "");
-			}
-		}
-
-		static object BindNewArrayInit (NewArrayExpression newArray, Arg[] args)
-		{
-			var a = Array.CreateInstance (newArray.Type.GetElementType (), newArray.Expressions.Count);// Activator.CreateInstance (newArray.Type);
-
-			var i = 0;
-			foreach (var e in newArray.Expressions) {
-				var v = BindNewObject (e, args);
-				a.SetValue (v, i);
-				i++;
-			}
-
-			return a;
-		}
-	}
-	
-	class BoundLinqCollection : ObservableCollection<object>
-	{
-		protected readonly IEnumerable source;
-		
-		public BoundLinqCollection (MethodCallExpression methodCall, Arg[] args)
-		{
-			source = (IEnumerable)Binding.Eval (methodCall.Arguments [0], args);
-			
-			var cc = source as INotifyCollectionChanged;
-			if (cc != null) {
-				cc.CollectionChanged += HandleSourceChanged;;
-			}
-		}
-		
-		protected virtual void HandleSourceChanged (object sender, NotifyCollectionChangedEventArgs e)
-		{
-		}
-	}
-	
-	class SelectLinqCollection : BoundLinqCollection
-	{
-		LambdaExpression createExpression;
-		Arg[] args;
-		
-		public SelectLinqCollection (MethodCallExpression methodCall, Arg[] args)
-			: base (methodCall, args)
-		{
-			createExpression = (LambdaExpression)methodCall.Arguments [1];
-			this.args = args;
-			
-			foreach (var sourceItem in source) {
-				Add (Project (sourceItem));
-			}
-		}
-		
-		protected override void HandleSourceChanged (object sender, NotifyCollectionChangedEventArgs e)
-		{
-			if (e.NewItems != null) {
-				var i = e.NewStartingIndex;
-				foreach (var sourceItem in e.NewItems) {
-					Insert (i, Project (sourceItem));
-					i++;
-				}
-			}
-		}
-		
-		object Project (object x)
-		{
-			var binding = Binding.Create (
-				createExpression,
-				args.Concat (new[] { new Arg (createExpression.Parameters[0], x) }).ToArray ());
-			return binding.Value;
 		}
 	}
 }
