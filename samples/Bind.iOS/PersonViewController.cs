@@ -33,17 +33,21 @@ namespace Bind.iOS.Sample
 			// Create the UI
 			//
 			firstNameEdit = new UITextField {
+				BorderStyle = UITextBorderStyle.RoundedRect,
 				Placeholder = "First Name",
+				BackgroundColor = UIColor.White,
 			};
 			lastNameEdit = new UITextField {
+				BorderStyle = UITextBorderStyle.RoundedRect,
 				Placeholder = "Last Name",
+				BackgroundColor = UIColor.White,
 			};
 			fullNameLabel = new UILabel {
 				Font = UIFont.PreferredHeadline,
 			};
 
 			View.AddSubviews (firstNameEdit, lastNameEdit, fullNameLabel);
-			View.BackgroundColor = UIColor.White;
+			View.BackgroundColor = UIColor.FromWhiteAlpha (0.9f, 1);
 
 			//
 			// Layout the UI
@@ -51,7 +55,7 @@ namespace Bind.iOS.Sample
 			View.ConstrainLayout (() =>
 				firstNameEdit.Frame.Left == View.Frame.Left + 10 &&
 				firstNameEdit.Frame.Right == View.Frame.Right - 10 &&
-				firstNameEdit.Frame.Top == View.Frame.Top + 100 &&
+				firstNameEdit.Frame.Top == View.Frame.Top + 80 &&
 
 				lastNameEdit.Frame.Left == firstNameEdit.Frame.Left &&
 				lastNameEdit.Frame.Right == firstNameEdit.Frame.Right &&
@@ -68,13 +72,6 @@ namespace Bind.iOS.Sample
 			Binding.Create (() => lastNameEdit.Text == person.LastName);
 			Binding.Create (() => fullNameLabel.Text == person.LastName + ", " + person.FirstName);
 			Binding.Create (() => Title == person.LastName + ", " + person.FirstName);
-		}
-
-		public override void ViewWillAppear (bool animated)
-		{
-			base.ViewWillAppear (animated);
-
-			firstNameEdit.BecomeFirstResponder ();
 		}
 	}
 }
