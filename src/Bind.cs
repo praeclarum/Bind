@@ -14,81 +14,72 @@
 //    limitations under the License.
 //
 using System;
-using System.Collections.ObjectModel;
 using System.Linq.Expressions;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Collections;
-using System.Collections.Specialized;
 using System.Diagnostics;
 using System.ComponentModel;
 
 namespace Praeclarum.Bind
 {
-	using Arg = KeyValuePair<ParameterExpression, object>;
-
 	/// <summary>
-	/// An action tied to a particular member of an object.
-	/// When Notify is called, the action is executed.
+	/// Abstract class that represents bindings between values in an applications.
+	/// Binding are created using Create and removed by calling Unbind.
 	/// </summary>
-	public class MemberChangeAction
-	{
-		readonly Action<int> action;
-
-		public object Target { get; private set; }
-		public MemberInfo Member { get; private set; }
-
-		public MemberChangeAction (object target, MemberInfo member, Action<int> action)
-		{
-			this.Target = target;
-			if (member == null)
-				throw new ArgumentNullException ("member");
-			this.Member = member;
-			if (action == null)
-				throw new ArgumentNullException ("action");
-			this.action = action;
-		}
-
-		public void Notify (int changeId)
-		{
-			action (changeId);
-		}
-	}
-
 	public abstract class Binding
 	{
-		public object Value { get; protected set; }
-
-		protected Binding (object value)
-		{
-			Value = value;
-		}
-
+		/// <summary>
+		/// Unbind this instance. This cannot be undone.
+		/// </summary>
 		public virtual void Unbind ()
 		{
 		}
 
-		public static Binding Create<T> (Expression<Func<T>> expr, params Arg[] args)
+		/// <summary>
+		/// Uses the lambda expression to create data bindings.
+		/// Equality expression (==) become data bindings.
+		/// And expressions (&&) can be used to group the data bindings.
+		/// </summary>
+		/// <param name="specifications">The binding specifications.</param>
+		public static Binding Create<T> (Expression<Func<T>> specifications)
 		{
-			return BindAny (expr, args);
+			return BindExpression (specifications.Body);
 		}
 
-		public static Binding Create (LambdaExpression expr, params Arg[] args)
+		static Binding BindExpression (Expression expr)
 		{
-			return BindAny (expr, args);
-		}
+			//
+			// Is this a group of bindings
+			//
+			if (expr.NodeType == ExpressionType.AndAlso) {
 
-		static Binding BindAny (LambdaExpression expr, params Arg[] args)
-		{
-			var body = expr.Body;
+				var b = (BinaryExpression)expr;
+
+				var parts = new List<Expression> ();
+
+				while (b != null) {
+					var l = b.Left;
+					parts.Add (b.Right);
+					if (l.NodeType == ExpressionType.AndAlso) {
+						b = (BinaryExpression)l;
+					} else {
+						parts.Add (l);
+						b = null;
+					}
+				}
+
+				parts.Reverse ();
+
+				return new MultipleBindings (parts.Select (BindExpression));
+			}
 
 			//
 			// Are we binding two values?
 			//
-			if (body.NodeType == ExpressionType.Equal) {
-				var b = (BinaryExpression)body;
-				return new EqualityBinding (b.Left, b.Right, args);
+			if (expr.NodeType == ExpressionType.Equal) {
+				var b = (BinaryExpression)expr;
+				return new EqualityBinding (b.Left, b.Right);
 			}
 
 			//
@@ -97,13 +88,13 @@ namespace Praeclarum.Bind
 			throw new NotSupportedException ("Only equality bindings are supported.");
 		}
 
-		protected static bool SetValue (Expression expr, object value, int changeId, params Arg[] args)
+		protected static bool SetValue (Expression expr, object value, int changeId)
 		{
 			if (expr.NodeType == ExpressionType.MemberAccess) {				
 				var m = (MemberExpression)expr;
 				var mem = m.Member;
 
-				var target = Eval (m.Expression, args);
+				var target = Evaluator.EvalExpression (m.Expression);
 
 				var f = mem as FieldInfo;
 				var p = mem as PropertyInfo;
@@ -133,9 +124,9 @@ namespace Praeclarum.Bind
 			Error (message);
 		}
 
-		static void ReportError (Exception ex)
+		static void ReportError (object errorObject)
 		{
-			ReportError (ex.ToString ());
+			ReportError (errorObject.ToString ());
 		}
 
 		#region Change Notification
@@ -151,7 +142,7 @@ namespace Praeclarum.Bind
 			public MemberActions (object target, MemberInfo mem)
 			{
 				this.target = target;
-				this.member = mem;
+				member = mem;
 			}
 
 			void AddChangeNotificationEventHandler ()
@@ -163,6 +154,9 @@ namespace Praeclarum.Bind
 					}
 					else {
 						var added = AddHandlerForFirstExistingEvent (member.Name + "Changed", "EditingDidEnd", "ValueChanged", "Changed");
+						if (!added) {
+							Debug.WriteLine ("Failed to bind to change event for " + target);
+						}
 					}
 				}
 			}
@@ -175,13 +169,13 @@ namespace Praeclarum.Bind
 
 					if (ev != null) {
 						eventInfo = ev;
-						if (typeof(EventHandler).GetTypeInfo ().IsAssignableFrom (ev.EventHandlerType.GetTypeInfo ())) {
-                            eventHandler = (EventHandler)HandleAnyEvent;
-                        }
-						else {
-							eventHandler = CreateGenericEventHandler (ev, () => HandleAnyEvent(null, EventArgs.Empty));
-                        }
-						Debug.WriteLine ("ADD HANDLER {0}", eventInfo);
+						var isClassicHandler = typeof(EventHandler).GetTypeInfo ().IsAssignableFrom (ev.EventHandlerType.GetTypeInfo ());
+
+						eventHandler = isClassicHandler ? 
+							(EventHandler)HandleAnyEvent : 
+							CreateGenericEventHandler (ev, () => HandleAnyEvent (null, EventArgs.Empty));
+
+						Debug.WriteLine ("ADD HANDLER {0} to {1}", eventInfo, target);
 						ev.AddEventHandler(target, eventHandler);
 						return true;
 					}
@@ -284,7 +278,7 @@ namespace Praeclarum.Bind
 
 		static readonly Dictionary<Tuple<Object, MemberInfo>, MemberActions> objectSubs = new Dictionary<Tuple<Object, MemberInfo>, MemberActions> ();
 
-		public static MemberChangeAction AddMemberChangeAction (object target, MemberInfo member, Action<int> k)
+		internal static MemberChangeAction AddMemberChangeAction (object target, MemberInfo member, Action<int> k)
 		{
 			var key = Tuple.Create (target, member);
 			MemberActions subs;
@@ -299,7 +293,7 @@ namespace Praeclarum.Bind
 			return sub;
 		}
 
-		public static void RemoveMemberChangeAction (MemberChangeAction sub)
+		internal static void RemoveMemberChangeAction (MemberChangeAction sub)
 		{
 			var key = Tuple.Create (sub.Target, sub.Member);
 			MemberActions subs;
@@ -328,8 +322,48 @@ namespace Praeclarum.Bind
 		}
 
 		#endregion
-		
-		public static object Eval (Expression expr, params Arg[] args)
+	}
+
+
+	/// <summary>
+	/// An action tied to a particular member of an object.
+	/// When Notify is called, the action is executed.
+	/// </summary>
+	class MemberChangeAction
+	{
+		readonly Action<int> action;
+
+		public object Target { get; private set; }
+		public MemberInfo Member { get; private set; }
+
+		public MemberChangeAction (object target, MemberInfo member, Action<int> action)
+		{
+			Target = target;
+			if (member == null)
+				throw new ArgumentNullException ("member");
+			Member = member;
+			if (action == null)
+				throw new ArgumentNullException ("action");
+			this.action = action;
+		}
+
+		public void Notify (int changeId)
+		{
+			action (changeId);
+		}
+	}
+
+
+	/// <summary>
+	/// Methods that can evaluate Linq expressions.
+	/// </summary>
+	static class Evaluator
+	{
+		/// <summary>
+		/// Gets the value of a Linq expression.
+		/// </summary>
+		/// <param name="expr">The expresssion.</param>
+		public static object EvalExpression (Expression expr)
 		{
 			//
 			// Easy case
@@ -341,45 +375,40 @@ namespace Praeclarum.Bind
 			//
 			// General case
 			//
-//			Console.WriteLine ("WARNING EVAL COMPILED {0}", expr);
-			var lambda = Expression.Lambda (expr, args.Select (a => a.Key).ToArray ());
-			return lambda.Compile ().DynamicInvoke (args.Select (a => a.Value).ToArray ());
+//			Debug.WriteLine ("WARNING EVAL COMPILED {0}", expr);
+			var lambda = Expression.Lambda (expr, Enumerable.Empty<ParameterExpression> ());
+			return lambda.Compile ().DynamicInvoke ();
 		}
 	}
 
 	/// <summary>
-	/// Binding between two values. Calling Invalidate() on either value causes
-	/// the binding value to be updated and the corresponding value to be updated.
-	/// Objects that support change notification events will automatically call
-	/// invalidate.
+	/// Binding between two values. When one changes, the other
+	/// is set.
 	/// </summary>
-	public class EqualityBinding : Binding
+	class EqualityBinding : Binding
 	{
+		object Value;
+
 		class Trigger
 		{
 			public Expression Expression;
 			public MemberInfo Member;
-			public MemberChangeAction Subscription;
+			public MemberChangeAction ChangeAction;
 		}
-		
-		readonly Arg[] args;
 		
 		readonly List<Trigger> leftTriggers = new List<Trigger> ();
 		readonly List<Trigger> rightTriggers = new List<Trigger> ();
 		
-		public EqualityBinding (Expression left, Expression right, params Arg[] args)
-			: base (null)
+		public EqualityBinding (Expression left, Expression right)
 		{
-			this.args = args;
-
 			// Try evaling the right and assigning left
-			Value = Eval (right, args);
-			var leftSet = SetValue (left, Value, nextChangeId, args);
+			Value = Evaluator.EvalExpression (right);
+			var leftSet = SetValue (left, Value, nextChangeId);
 
 			// If that didn't work, then try the other direction
 			if (!leftSet) {
-				Value = Eval (left, args);
-				SetValue (right, Value, nextChangeId, args);
+				Value = Evaluator.EvalExpression (left);
+				SetValue (right, Value, nextChangeId);
 			}
 
 			nextChangeId++;
@@ -401,18 +430,18 @@ namespace Praeclarum.Bind
 		void Resubscribe (List<Trigger> triggers, Expression expr, Expression dependentExpr)
 		{
 			Unsubscribe (triggers);
-			Subscribe (triggers, changeId => OnSideChanged (triggers, expr, dependentExpr, changeId));
+			Subscribe (triggers, changeId => OnSideChanged (expr, dependentExpr, changeId));
 		}
 
 		int nextChangeId = 1;
 		readonly HashSet<int> activeChangeIds = new HashSet<int> ();
 		
-		void OnSideChanged (List<Trigger> triggers, Expression expr, Expression dependentExpr, int causeChangeId)
+		void OnSideChanged (Expression expr, Expression dependentExpr, int causeChangeId)
 		{
 			if (activeChangeIds.Contains (causeChangeId))
 				return;
 
-			var v = Eval (expr, args);
+			var v = Evaluator.EvalExpression (expr);
 			
 			if (v == null && Value == null)
 				return;
@@ -425,26 +454,27 @@ namespace Praeclarum.Bind
 
 				var changeId = nextChangeId++;
 				activeChangeIds.Add (changeId);
-				SetValue (dependentExpr, v, changeId, args);
+				SetValue (dependentExpr, v, changeId);
 				activeChangeIds.Remove (changeId);
-			} else {
+			} 
+//			else {
 //				Debug.WriteLine ("Prevented needless update");
-			}
+//			}
 		}
 
-		void Unsubscribe (List<Trigger> triggers)
+		static void Unsubscribe (List<Trigger> triggers)
 		{
 			foreach (var t in triggers) {
-				if (t.Subscription != null) {
-					RemoveMemberChangeAction (t.Subscription);
+				if (t.ChangeAction != null) {
+					RemoveMemberChangeAction (t.ChangeAction);
 				}
 			}
 		}
 		
-		void Subscribe (List<Trigger> triggers, Action<int> k)
+		static void Subscribe (List<Trigger> triggers, Action<int> action)
 		{
 			foreach (var t in triggers) {
-				t.Subscription = AddMemberChangeAction (Eval (t.Expression), t.Member, k);
+				t.ChangeAction = AddMemberChangeAction (Evaluator.EvalExpression (t.Expression), t.Member, action);
 			}
 		}		
 		
@@ -457,22 +487,37 @@ namespace Praeclarum.Bind
 				var t = new Trigger { Expression = m.Expression, Member = m.Member };
 				triggers.Add (t);
 
-			} else if (s is BinaryExpression) {
-				var b = (BinaryExpression)s;
-				
-				CollectTriggers (b.Left, triggers);
-				CollectTriggers (b.Right, triggers);
+			} else {
+				var b = s as BinaryExpression;
+				if (b != null) {
+					CollectTriggers (b.Left, triggers);
+					CollectTriggers (b.Right, triggers);
+				}
 			}
 		}
 	}
+
+
+	/// <summary>
+	/// Multiple bindings grouped under a single binding to make adding and removing easier.
+	/// </summary>
+	class MultipleBindings : Binding
+	{
+		readonly List<Binding> bindings;
+
+		public MultipleBindings (IEnumerable<Binding> bindings)
+		{
+			this.bindings = bindings.Where (x => x != null).ToList ();
+		}
+
+		public override void Unbind ()
+		{
+			base.Unbind ();
+			foreach (var b in bindings) {
+				b.Unbind ();
+			}
+			bindings.Clear ();
+		}
+	}
 }
-
-
-
-
-
-
-
-
-
 

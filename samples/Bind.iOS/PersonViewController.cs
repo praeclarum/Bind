@@ -3,6 +3,7 @@ using MonoTouch.UIKit;
 
 using Praeclarum.Bind;
 using Praeclarum.UI;
+using MonoTouch.CoreGraphics;
 
 namespace Bind.iOS.Sample
 {
@@ -13,6 +14,9 @@ namespace Bind.iOS.Sample
 		UITextField firstNameEdit;
 		UITextField lastNameEdit;
 		UILabel fullNameLabel;
+		UIButton bindButton;
+
+		Binding binding;
 
 		public PersonViewController (Person person)
 		{
@@ -32,6 +36,11 @@ namespace Bind.iOS.Sample
 			//
 			// Create the UI
 			//
+			bindButton = UIButton.FromType (UIButtonType.RoundedRect);
+			bindButton.SetTitle ("Bind", UIControlState.Normal);
+			bindButton.Selected = true;
+			bindButton.TouchUpInside += HandleBindButton;
+
 			firstNameEdit = new UITextField {
 				BorderStyle = UITextBorderStyle.RoundedRect,
 				Placeholder = "First Name",
@@ -46,16 +55,19 @@ namespace Bind.iOS.Sample
 				Font = UIFont.PreferredHeadline,
 			};
 
-			View.AddSubviews (firstNameEdit, lastNameEdit, fullNameLabel);
+			View.AddSubviews (bindButton, firstNameEdit, lastNameEdit, fullNameLabel);
 			View.BackgroundColor = UIColor.FromWhiteAlpha (0.9f, 1);
 
 			//
 			// Layout the UI
 			//
 			View.ConstrainLayout (() =>
+				bindButton.Frame.Top == View.Frame.Top + 80 &&
+				bindButton.Frame.GetMidX () == View.Frame.GetMidX () &&
+
 				firstNameEdit.Frame.Left == View.Frame.Left + 10 &&
 				firstNameEdit.Frame.Right == View.Frame.Right - 10 &&
-				firstNameEdit.Frame.Top == View.Frame.Top + 80 &&
+				firstNameEdit.Frame.Top == bindButton.Frame.Bottom + 10 &&
 
 				lastNameEdit.Frame.Left == firstNameEdit.Frame.Left &&
 				lastNameEdit.Frame.Right == firstNameEdit.Frame.Right &&
@@ -68,10 +80,28 @@ namespace Bind.iOS.Sample
 			//
 			// Databind the UI
 			//
-			Binding.Create (() => firstNameEdit.Text == person.FirstName);
-			Binding.Create (() => lastNameEdit.Text == person.LastName);
-			Binding.Create (() => fullNameLabel.Text == person.LastName + ", " + person.FirstName);
-			Binding.Create (() => Title == person.LastName + ", " + person.FirstName);
+			binding = CreateBinding ();
+		}
+
+		Binding CreateBinding ()
+		{
+			return Binding.Create (() => 
+				firstNameEdit.Text == person.FirstName && 
+				lastNameEdit.Text == person.LastName && 
+				fullNameLabel.Text == "Full Name: " + person.LastName + ", " + person.FirstName && 
+				Title == person.FirstName + " " + person.LastName);
+		}
+
+		void HandleBindButton (object sender, EventArgs e)
+		{
+			if (binding != null) {
+				binding.Unbind ();
+				binding = null;
+				bindButton.Selected = false;
+			} else {
+				binding = CreateBinding ();
+				bindButton.Selected = true;
+			}
 		}
 	}
 }
