@@ -59,6 +59,36 @@ Bindings are symmetric, so you could just as well have written:
 Then only difference occurs at initialization: the `stateEdit.Text` value is assigned to the `person.Address.State` value instead of the other way around.
 
 
+#### Unbinding
+
+`Binding.Create` returns a `Binding` object with one member `Unbind`. Calling this method permanently removes the bindings. If you want them back, you will need to re-create them.
+
+    var binding = Binding.Create (() => stateEdit.Text == person.Address.State);
+
+    ...
+
+    binding.Unbind ();
+
+
+#### Multiple Bindings
+
+You can create multiple bindings by chaining them together with the and operator `&&`:
+
+    Binding.Create (() => 
+        nameEdit.Text == person.Name &&
+        stateEdit.Text == person.Address.State);
+
+This is useful if you want to unbind a lot of data bindings all at once:
+
+    var multipleBindings = Binding.Create (() => 
+        nameEdit.Text == person.Name &&
+        stateEdit.Text == person.Address.State);
+
+    ...
+
+    multipleBindings.Unbind ();
+
+
 #### Complex Equality Binding
 
 Sometimes you will want to bind a transformation or composition of data.
@@ -75,10 +105,11 @@ Consider the case of displaying a person's full name and allowing them to enter 
 
         public override void ViewDidLoad ()
         {
-            Binding.Create (() => firstNameEdit.Text == person.FirstName);
-            Binding.Create (() => lastNameEdit.Text == person.LastName);
-            Binding.Create (() => fullNameLabel.Text == person.LastName + ", " + person.FirstName);
-            Binding.Create (() => Title == person.LastName + ", " + person.FirstName);
+            Binding.Create (() => 
+                firstNameEdit.Text == person.FirstName &&
+                lastNameEdit.Text == person.LastName &&
+                fullNameLabel.Text == person.LastName + ", " + person.FirstName &&
+                Title == person.LastName + ", " + person.FirstName);
         }
     }
 
@@ -111,11 +142,6 @@ will be automatically change tracked.
 
 
 
-
-
-#### Unbinding
-
-Call `Unbind` on the object returned from `Binding.Create` to cancel the binding.
 
 
 
