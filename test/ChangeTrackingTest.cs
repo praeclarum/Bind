@@ -332,6 +332,36 @@ namespace Praeclarum.Bind.Test
 
 			Assert.AreEqual ("Goodbye", left);
 		}
+
+        class PlainObject
+        {
+            public string string_property { get; set;}
+        }
+
+        [Test]
+        public void TriggerInvalidateMember()
+        {
+            var obj = new PlainObject {
+                string_property = "Hello",
+            };
+            var left = "";
+
+            var b = Binding.Create (() => left == obj.string_property);
+
+            Assert.AreEqual (obj.string_property, left);
+
+            obj.string_property = "Goodbye";
+
+            Binding.InvalidateMember(() => obj.string_property);
+
+            Assert.AreEqual ("Goodbye", left);
+
+            b.Unbind ();
+
+            obj.string_property = "Hello Again";
+
+            Assert.AreEqual ("Goodbye", left);
+        }
 	}
 }
 
