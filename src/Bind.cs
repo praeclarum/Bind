@@ -323,6 +323,23 @@ namespace Praeclarum.Bind
 			}
 		}
 
+        /// <summary>
+        /// A nice expression based way to invalidate the specified object member. 
+        /// This will cause all actions associated with that member to be executed.
+        /// This is the main mechanism by which binding values are distributed.
+        /// </summary>
+        /// <param name="lambdaExpr">Lambda expr of the Member of the object that changed</param>
+        /// <typeparam name="T">The 1st type parameter.</typeparam>
+        public static void InvalidateMember<T>(Expression<Func<T>> lambdaExpr)
+        {
+            var body = lambdaExpr.Body;
+            if (body.NodeType == ExpressionType.MemberAccess) {
+                var m = (MemberExpression)body;
+                var obj = Evaluator.EvalExpression(m.Expression);
+                InvalidateMember(obj, m.Member, 0);
+            }
+        }
+
 		#endregion
 	}
 
