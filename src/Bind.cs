@@ -302,6 +302,7 @@ namespace Praeclarum.Bind
 			if (objectSubs.TryGetValue (key, out subs)) {
 //				Debug.WriteLine ("REMOVE CHANGE ACTION " + sub.Target + " " + sub.Member);
 				subs.RemoveAction (sub);
+				objectSubs.Remove(key);
 			}
 		}
 
